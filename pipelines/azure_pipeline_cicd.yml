@@ -1,0 +1,236 @@
+trigger:
+  branches:
+    include:
+    - main
+  paths:
+    include:
+    - database/*
+    - src/*
+
+variables:
+- name: buildConfiguration
+  value: 'Release'
+- name: dotnetSdkVersion
+  value: '8.x'
+- name: testProjects
+  value: '**/*.Tests/*.csproj'
+- group: DatabaseRelease
+
+stages:
+  # Database
+  - stage: Database
+    displayName: 'Database Deploy'
+    # Microsoft-hosted agents
+    # pool:
+    #   vmImage: 'windows-latest'
+    # Managed DevOps Pools agents
+    pool:
+      name: mdp-demo-osa-001
+      demands:
+        - ImageOverride -equals windows-2022
+    jobs:
+    - job: DatabaseJob
+      displayName: 'Database Job'
+      steps:
+        - task: VSBuild@1
+          inputs:
+            solution: 'database/*.sln'
+            msbuildArgs: '/p:Configuration=Release'
+            platform: 'Any CPU'
+
+        - task: CopyFiles@2
+          inputs:
+            SourceFolder: '$(System.DefaultWorkingDirectory)/database/EventTrackerDB/bin/Release'
+            Contents: '**/*.dacpac'
+            TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+        # DACPACファイルをパイプライン成果物として公開
+        - task: PublishBuildArtifacts@1
+          inputs:
+            pathToPublish: '$(Build.ArtifactStagingDirectory)'
+            artifactName: 'drop'
+            publishLocation: 'Container'
+
+        # 生成された DACPAC ファイルをデプロイ
+        - task: SqlAzureDacpacDeployment@1
+          inputs:
+            azureSubscription: $(SERVICE_CONNECTION_NAME)
+            ServerName: '$(EventAttendeesApp--SqlServerName)'
+            DatabaseName: '$(EventAttendeesApp--DatabaseName)'
+            SqlUsername: '$(EventAttendeesApp--SqlUsername)'
+            SqlPassword: '$(EventAttendeesApp--SqlPassword)'
+            DacpacFile: '$(Build.ArtifactStagingDirectory)/*.dacpac'
+
+  # Analyze
+  - stage: Analyze
+    displayName: 'Analyze'
+    dependsOn: Database
+    condition:  succeeded()
+    # pool:
+    #   vmImage: ubuntu-latest
+    pool:
+      name: mdp-demo-osa-001
+      demands:
+        - ImageOverride -equals ubuntu-22.04
+    jobs:
+    - job: AnalyzeJob
+      displayName: 'Analyze Job'
+      steps:
+        # >>> Microsoft Defender for DevOps ※実行結果詳細をScanタブへ表示するには"SARIF SAST Scans Tab"拡張機能をインストールする必要があります
+        - task: UseDotNet@2
+          displayName: 'Use .NET SDK $(dotnetSdkVersion)'
+          inputs:
+            version: '$(dotnetSdkVersion)'
+            performMultiLevelLookup: true
+            includePreviewVersions: true
+
+        - task: MicrosoftSecurityDevOps@1
+          displayName: 'Microsoft Security DevOps'
+          inputs:
+            # secretは非推奨となる、代わりにGitHub Advanced Securityの利用を推奨
+            categories: 'secrets, code'
+            break: true
+        # <<< Microsoft Defender for DevOps ※実行結果詳細をScanタブへ表示するには"SARIF SAST Scans Tab"拡張機能をインストールする必要があります
+
+  # Build&Test
+  - stage: BuildAndTest
+    displayName: 'Unit Test'
+    dependsOn: Analyze
+    condition: succeeded()
+    # pool:
+    #   vmImage: ubuntu-latest
+    pool:
+      name: mdp-demo-osa-001
+      demands:
+        - ImageOverride -equals ubuntu-22.04
+    jobs:
+    - job: UnitTestJob
+      displayName: 'UnitTest Job'
+      steps:
+        - task: UseDotNet@2
+          displayName: 'Use .NET SDK $(dotnetSdkVersion)'
+          inputs:
+            version: '$(dotnetSdkVersion)'
+            performMultiLevelLookup: true
+            includePreviewVersions: true
+        - task: DotNetCoreCLI@2
+          displayName: 'Restore project dependencies'
+          inputs:
+            command: 'restore'
+            projects: $(testProjects)
+        - task: DotNetCoreCLI@2
+          displayName: 'Build the project - $(buildConfiguration)'
+          inputs:
+            command: 'build'
+            projects: $(testProjects)
+            arguments: '--no-restore --configuration $(buildConfiguration)'
+        - task: DotNetCoreCLI@2
+          displayName: 'Execute unit test'
+          inputs:
+            command: test
+            projects: $(testProjects)
+            arguments: '--configuration $(buildConfiguration) --collect "Code coverage"'
+            publishTestResults: true
+        - task: PublishCodeCoverageResults@1
+          displayName: 'Publish code coverage report'
+          inputs:
+            codeCoverageTool: 'Cobertura'
+            summaryFileLocation: '$(Agent.TempDirectory)/**/coverage.cobertura.xml'
+
+  # DeployToDev
+  - stage: DeployToDev
+    displayName: 'Dev to Build and Push Docker Image'
+    dependsOn: BuildAndTest
+    condition: succeeded()
+    # pool:
+    #   vmImage: ubuntu-latest
+    pool:
+      name: mdp-demo-osa-001
+      demands:
+        - ImageOverride -equals ubuntu-22.04
+    jobs:
+    - deployment: DeployToDevJob
+      environment: dev
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+              - task: Docker@2
+                displayName: 'Build and Push Docker image'
+                inputs:
+                  command: buildAndPush
+                  repository: $(CONTAINER_IMAGE_NAME)
+                  dockerfile: '$(Build.SourcesDirectory)/src/Dockerfile'
+                  containerRegistry: $(CONTAINER_REGISTORY_SERVICE_CONNECTION_NAME)
+                  tags: |
+                    $(CONTAINER_IMAGE_TAG)
+            # >>> マルチテナントの場合、Docker RegistryのService Connectionを利用できないため、Azure CLI を使用してログインする必要がある。
+            # steps:
+            #   - task: AzureCLI@2
+            #     inputs:
+            #       azureSubscription: $(SERVICE_CONNECTION_NAME)  # Azure Resource Manager サービス接続
+            #       scriptType: 'bash'
+            #       scriptLocation: 'inlineScript'
+            #       inlineScript: |
+            #         echo "Logging into Azure Container Registry"
+            #         az acr login --name $(CONTAINER_REGISTORY_NAME)
+
+            #         echo "Building Docker image with Dockerfile"
+            #         docker build -f $(Build.SourcesDirectory)/src/Dockerfile -t $(CONTAINER_IMAGE_NAME):$(Build.BuildId) $(Build.SourcesDirectory)/src
+
+            #         echo "Tagging Docker image"
+            #         docker tag $(CONTAINER_IMAGE_NAME):$(Build.BuildId) $(CONTAINER_REGISTORY_NAME).azurecr.io/$(CONTAINER_IMAGE_NAME):$(CONTAINER_IMAGE_TAG)
+
+            #         echo "Pushing Docker image"
+            #         docker push $(CONTAINER_REGISTORY_NAME).azurecr.io/$(CONTAINER_IMAGE_NAME):$(CONTAINER_IMAGE_TAG)
+            #     displayName: 'Build, Tag, and Push Docker Image using Azure CLI'
+            # <<< マルチテナントの場合、Docker RegistryのService Connectionを利用できないため、Azure CLI を使用してログインする必要がある。
+
+  # DeployToStg
+  - stage: DeployToStg
+    displayName: 'Stg to Build and Push Docker Image'
+    dependsOn: DeployToDev
+    condition: succeeded()
+    # pool:
+    #   vmImage: ubuntu-latest
+    pool:
+      name: mdp-demo-osa-001
+      demands:
+        - ImageOverride -equals ubuntu-22.04
+    jobs:
+    - deployment: DeployToStgJob
+      environment: stg
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+              - task: Docker@2
+                displayName: 'Build and Push Docker image'
+                inputs:
+                  command: buildAndPush
+                  repository: $(CONTAINER_IMAGE_NAME)
+                  dockerfile: '$(Build.SourcesDirectory)/src/Dockerfile'
+                  containerRegistry: $(CONTAINER_REGISTORY_SERVICE_CONNECTION_NAME)
+                  tags: |
+                    $(CONTAINER_IMAGE_TAG)
+            # >>> マルチテナントの場合、Docker RegistryのService Connectionを利用できないため、Azure CLI を使用してログインする必要がある。
+            # steps:
+            #   - task: AzureCLI@2
+            #     inputs:
+            #       azureSubscription: $(SERVICE_CONNECTION_NAME)  # Azure Resource Manager サービス接続
+            #       scriptType: 'bash'
+            #       scriptLocation: 'inlineScript'
+            #       inlineScript: |
+            #         echo "Logging into Azure Container Registry"
+            #         az acr login --name $(CONTAINER_REGISTORY_NAME)
+
+            #         echo "Building Docker image with Dockerfile"
+            #         docker build -f $(Build.SourcesDirectory)/src/Dockerfile -t $(CONTAINER_IMAGE_NAME):$(Build.BuildId) $(Build.SourcesDirectory)/src
+
+            #         echo "Tagging Docker image"
+            #         docker tag $(CONTAINER_IMAGE_NAME):$(Build.BuildId) $(CONTAINER_REGISTORY_NAME).azurecr.io/$(CONTAINER_IMAGE_NAME):$(CONTAINER_IMAGE_TAG)
+
+            #         echo "Pushing Docker image"
+            #         docker push $(CONTAINER_REGISTORY_NAME).azurecr.io/$(CONTAINER_IMAGE_NAME):$(CONTAINER_IMAGE_TAG)
+            #     displayName: 'Build, Tag, and Push Docker Image using Azure CLI'
+            # <<< マルチテナントの場合、Docker RegistryのService Connectionを利用できないため、Azure CLI を使用してログインする必要がある。

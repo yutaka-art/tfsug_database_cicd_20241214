@@ -1,0 +1,39 @@
+﻿@page
+@model EventAttendeesApp.Pages.EventAttendees.IndexModel
+
+@{
+    ViewData["Title"] = "Event Attendees List";  // ページのタイトルを設定
+}
+
+<h2 class="text-center">Event Attendees</h2>
+<div class="text-center">
+<hr />
+<div id="ww_a46460389f79c" v='1.3' loc='id' a='{"t":"horizontal","lang":"ja","sl_lpl":1,"ids":[],"font":"Arial","sl_ics":"one_a","sl_sot":"celsius","cl_bkg":"image","cl_font":"#FFFFFF","cl_cloud":"#FFFFFF","cl_persp":"#81D4FA","cl_sun":"#FFC107","cl_moon":"#FFC107","cl_thund":"#FF5722"}'>More forecasts: <a href="https://oneweather.org/ja/tokyo/10_days/" id="ww_a46460389f79c_u" target="_blank">天気予報 10日間 東京</a></div><script async src="https://app2.weatherwidget.org/js/?id=ww_a46460389f79c"></script>
+<hr />
+
+<table class="table table-striped table-bordered mt-4">
+    <thead class="table-dark">
+        <tr>
+            <th>Event Name</th>
+            <th>Attendee Name</th>
+            <th>Email</th>
+            <th>Registration Date</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var attendee in Model.EventAttendeeList)
+        {
+            <tr>
+                <td>@attendee.EventName</td>
+                <td>@attendee.AttendeeName</td>
+                <td>@attendee.Email</td>
+                <td>@attendee.RegistrationDate.ToString("yyyy-MM-dd")</td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+    <hr />
+    <div id="ww_789c9f7947143" v='1.3' loc='id' a='{"t":"ticker","lang":"ja","sl_lpl":1,"ids":[],"font":"Arial","sl_ics":"one_a","sl_sot":"celsius","cl_bkg":"image","cl_font":"#FFFFFF","cl_cloud":"#FFFFFF","cl_persp":"#81D4FA","cl_sun":"#FFC107","cl_moon":"#FFC107","cl_thund":"#FF5722"}'>More forecasts: <a href="https://oneweather.org/ja/tokyo/10_days/" id="ww_789c9f7947143_u" target="_blank">東京 10日間天気</a></div><script async src="https://app2.weatherwidget.org/js/?id=ww_789c9f7947143"></script>
+
+</div>

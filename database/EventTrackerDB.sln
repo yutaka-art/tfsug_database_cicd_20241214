@@ -1,0 +1,27 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.10.35027.167
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{00D1A9C2-B5F0-4AF3-8072-F6C62B433612}") = "EventTrackerDB", "EventTrackerDB\EventTrackerDB.sqlproj", "{C8A6FB74-14B4-45A0-A6B1-30207855D2EF}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{C8A6FB74-14B4-45A0-A6B1-30207855D2EF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C8A6FB74-14B4-45A0-A6B1-30207855D2EF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C8A6FB74-14B4-45A0-A6B1-30207855D2EF}.Debug|Any CPU.Deploy.0 = Debug|Any CPU
+		{C8A6FB74-14B4-45A0-A6B1-30207855D2EF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C8A6FB74-14B4-45A0-A6B1-30207855D2EF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C8A6FB74-14B4-45A0-A6B1-30207855D2EF}.Release|Any CPU.Deploy.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {CEBE61A8-BFDE-4FC7-91A7-2EEF219CEB9E}
+	EndGlobalSection
+EndGlobal
